@@ -1,0 +1,13 @@
+# dsh-subagent-model bundle patch layer.
+#
+# Host half: delegate_subagent tool (spawns subagents on the configured
+# global subagent model), /dsh-subagent-model/{state,sub} config routes,
+# and a delegation policy prompt section.
+#
+# Client half: the "子代理模型" seat in conversation.input.right - the tool
+# row slot immediately LEFT of the native model seat. The main-agent model
+# stays with the official model menu; this plugin only edits the subagent
+# model, with UI ported 1:1 from the native ModelSelect.
+- insert:
+    - id: dsh-subagent-model
+      name: dsh-subagent-model

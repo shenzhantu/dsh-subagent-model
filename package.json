@@ -1,0 +1,48 @@
+{
+  "name": "dsh-subagent-model",
+  "version": "1.2.0",
+  "description": "DSH 子代理模型插件：在 composer 底部（官方模型菜单左侧）增加「子代理模型」菜单，为子代理独立配置 provider/model/推理强度/档位（与「设置 -> Agent 预设」同源：官方内置 + 插件预置的 轻量执行/只读研究 注册为真实用户预设 + 用户自建预设）；主 agent 模型仍走官方管理。注册 delegate_subagent 工具让子代理真正使用配置的模型与档位，解决官方默认 subagent 与主模型同源造成的资源浪费。",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "README.md",
+    "README.en.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "slots",
+        "modelDirectories",
+        "sessions"
+      ],
+      "immediately": true
+    }
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "subagent",
+    "subagent-model",
+    "model-selection",
+    "delegate"
+  ],
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": ">=0.0.1-rc.1",
+    "@deepseek-ai/dsh-subagent": ">=0.0.1-rc.1"
+  },
+  "license": "MIT"
+}
