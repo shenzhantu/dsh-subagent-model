@@ -87,6 +87,16 @@ after that they are ordinary user presets:
   the next start); to get the factory profiles back, remove
   `$DSH_HOME/data/dsh-subagent-model/seeded-presets.json` and restart.
 
+**Seed self-healing (v1.2.1)**: seed templates are versioned. The v1.2.0
+  templates omitted the REQUIRED `sampleOverCapGlobResults` config on
+  `tool-fs-search` (zod: required, no default), which made the seeded presets
+  fail to mount - and selecting one as the default agent preset broke every
+  new session. v1.2.1 fixes the templates and upgrades, on the next start,
+  any seed file still byte-identical to the old template (i.e. never edited
+  by you) in place; files you edited are always left untouched, and disks
+  already carrying the correct content (e.g. fixed by hand) are not modified
+  either.
+
 A preset profile's persona text is taken from the preset's own persona row
 (the `persona` row of `agent.cordis.yml`), so editing the persona in Settings
 is picked up by delegated subagents too. Presets with a known tool surface

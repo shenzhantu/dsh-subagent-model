@@ -48,6 +48,13 @@ const LEGACY_FILE = join(process.env.DSH_HOME || join(homedir(), '.dsh'), 'data'
 // $DSH_HOME/.agent-presets/<id>/ (preset.yml + agent.cordis.yml), the same
 // root the Settings -> Agent 预设 page reads. After seeding they are ordinary
 // user presets: rename/edit/delete them in Settings and this plugin follows.
+//
+// TEMPLATE RULE: every row here must carry the config the target plugin's
+// zod schema REQUIRES (no defaults). v1.2.0 seeded tool-fs-search without
+// `sampleOverCapGlobResults` (required, no default), so selecting such a
+// preset as a session's agent preset failed the mount - and as the DEFAULT
+// preset it broke every new session. Cross-check each row against the
+// official `standard` preset before changing these templates.
 
 const USER_PRESET_ROOT = join(process.env.DSH_HOME || join(homedir(), '.dsh'), '.agent-presets')
 
@@ -85,6 +92,8 @@ const SEED_PRESETS = [
   name: '@deepseek-ai/dsh-tool-fs'
 - id: tool-fs-search
   name: '@deepseek-ai/dsh-tool-fs-search'
+  config:
+    sampleOverCapGlobResults: false
 `,
   },
   {
@@ -104,6 +113,8 @@ const SEED_PRESETS = [
   name: '@deepseek-ai/dsh-tool-fs'
 - id: tool-fs-search
   name: '@deepseek-ai/dsh-tool-fs-search'
+  config:
+    sampleOverCapGlobResults: false
 - id: tool-web
   name: '@deepseek-ai/dsh-tool-web'
   config:
@@ -123,32 +134,89 @@ const PRESET_TOOL_ALLOW = {
   research: ['read', 'glob', 'grep', 'web_search'],
 }
 
-// ---------- seed the two profiles as real user presets (idempotent) ----------
+// ---------- seed the two profiles as real user presets (versioned, self-healing) ----------
 
 const SEED_MARKER = join(DATA_DIR, 'seeded-presets.json')
 
-function seedUserPresets(ctx) {
+// Bump when a seed template changes; pristine older seeds are self-healed on
+// the next start, while user-edited files are always left untouched.
+const SEED_VERSION = 2
+
+// The exact compositions seed version 1 wrote. v1 omitted the REQUIRED
+// `sampleOverCapGlobResults` config on tool-fs-search (zod: required, no
+// default), so the seeded presets failed to mount - and selecting one as the
+// default agent preset broke every new session with `new session failed`.
+// A disk file still byte-identical to its v1 template is provably untouched
+// by the user, so the v2 seed upgrades it in place.
+const V1_COMPOSITIONS = {
+  quick: `# 轻量执行 (quick) - seeded by dsh-subagent-model.
+# 精简人格 + bash/read/write/edit/glob/grep 核心工具（无 web、无 skill、无子代理）。
+- id: persona
+  name: '@deepseek-ai/dsh-persona'
+  config:
+    text: 你是一个专注执行的助手：用最少的步骤直接完成任务并返回结果，不写多余的开场、复述与总结。
+- id: tool-bash
+  name: '@deepseek-ai/dsh-tool-bash'
+- id: tool-fs
+  name: '@deepseek-ai/dsh-tool-fs'
+- id: tool-fs-search
+  name: '@deepseek-ai/dsh-tool-fs-search'
+`,
+  research: `# 只读研究 (research) - seeded by dsh-subagent-model.
+# 只读检索（read/glob/grep/web_search），不改动任何文件。
+- id: persona
+  name: '@deepseek-ai/dsh-persona'
+  config:
+    text: 你是一个只读研究助手：只检索与阅读，不创建、不修改、不删除任何文件；结论需给出来源依据。
+- id: tool-fs
+  name: '@deepseek-ai/dsh-tool-fs'
+- id: tool-fs-search
+  name: '@deepseek-ai/dsh-tool-fs-search'
+- id: tool-web
+  name: '@deepseek-ai/dsh-tool-web'
+  config:
+    fetch: false
+    searchTimeoutMs: 60000
+`,
+}
+
+function seedPresetYml(preset) {
+  return 'name: ' + preset.name + '\n' +
+    'description: ' + preset.description + '\n' +
+    'order: ' + preset.order + '\n'
+}
+
+export function seedUserPresets(ctx) {
   try {
     const root = resolveUserPresetRoot(ctx)
     mkdirSync(root, { recursive: true })
     const marker = (() => { try { return JSON.parse(readFileSync(SEED_MARKER, 'utf8')) } catch { return {} } })()
-    if (marker.version === 1) return // already seeded once; never re-seed after user edits
-    let seeded = false
+    if (marker.version === SEED_VERSION) return // up to date; never touch anything again
     for (const preset of SEED_PRESETS) {
       const dir = join(root, preset.id)
-      if (existsSync(dir)) continue // a user-authored preset claims this id -> respect it
-      mkdirSync(dir, { recursive: true })
-      writeFileSync(join(dir, 'preset.yml'),
-        'name: ' + preset.name + '\n' +
-        'description: ' + preset.description + '\n' +
-        'order: ' + preset.order + '\n', 'utf8')
-      writeFileSync(join(dir, 'agent.cordis.yml'), preset.composition, 'utf8')
-      seeded = true
+      const compPath = join(dir, 'agent.cordis.yml')
+      if (!existsSync(compPath)) {
+        // Fresh install, a deleted seed, or a broken placeholder directory:
+        // write the current template (metadata too, when absent).
+        mkdirSync(dir, { recursive: true })
+        writeFileSync(compPath, preset.composition, 'utf8')
+        if (!existsSync(join(dir, 'preset.yml'))) {
+          writeFileSync(join(dir, 'preset.yml'), seedPresetYml(preset), 'utf8')
+        }
+        continue
+      }
+      const onDisk = readFileSync(compPath, 'utf8')
+      if (onDisk === preset.composition) continue // already current
+      if (V1_COMPOSITIONS[preset.id] !== undefined && onDisk === V1_COMPOSITIONS[preset.id]) {
+        // Pristine v1 seed (broken template, provably untouched by the user)
+        // -> self-heal in place. Only the composition is rewritten; a
+        // user-renamed preset.yml keeps its edits.
+        writeFileSync(compPath, preset.composition, 'utf8')
+      }
+      // Otherwise the user authored this id or edited the file -> respect it.
     }
-    if (seeded) {
-      mkdirSync(DATA_DIR, { recursive: true })
-      writeFileSync(SEED_MARKER, JSON.stringify({ version: 1 }), 'utf8')
-    }
+    mkdirSync(DATA_DIR, { recursive: true })
+    writeFileSync(SEED_MARKER, JSON.stringify({ version: SEED_VERSION }), 'utf8')
   } catch (e) { /* seeding is best-effort; the menu falls back to hardcoded rows */ }
 }
 
@@ -282,8 +350,9 @@ export function apply(ctx) {
       } catch (e) { /* presets unavailable -> inherit only */ }
       // Fallback: if seeding never completed (user root missing/unwritable),
       // still surface the two profiles so the feature works; once the seed
-      // marker exists, deletions in Settings are respected (true sync).
-      const seededOnce = (() => { try { return JSON.parse(readFileSync(SEED_MARKER, 'utf8')).version === 1 } catch { return false } })()
+      // marker is at the current version, deletions in Settings are respected
+      // (true sync).
+      const seededOnce = (() => { try { return JSON.parse(readFileSync(SEED_MARKER, 'utf8')).version === SEED_VERSION } catch { return false } })()
       if (!seededOnce) {
         for (const seed of SEED_PRESETS) {
           if (!profiles.some((p) => p.id === 'preset:' + seed.id)) {

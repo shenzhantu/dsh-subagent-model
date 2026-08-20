@@ -41,11 +41,13 @@ DSH 官方默认情况下，主 agent 调用的 subagent **继承主 agent 的�
 
 ### 插件预置档位与 DSH Agent 预设的同步
 
-插件首次启动时（幂等，只写一次），把两个手调档位以**真实用户预设**形式写入 `$DSH_HOME/.agent-presets/quick/` 与 `$DSH_HOME/.agent-presets/research/`（`preset.yml` + `agent.cordis.yml`），之后它们就是普通用户预设：
+插件首次启动时（幂等，按种子版本管理），把两个手调档位以**真实用户预设**形式写入 `$DSH_HOME/.agent-presets/quick/` 与 `$DSH_HOME/.agent-presets/research/`（`preset.yml` + `agent.cordis.yml`），之后它们就是普通用户预设：
 
 - 在「设置 → Agent 预设 → 自定义」里能看到、能改名、能编辑人格、能删除；
 - 本插件的「子代理档位 → 自定义」读的是**同一个** `agentPresets.list()` 名单，所以任何一处的改名 / 编辑 / 删除都会同步反映到另一处；
 - 若你删除了某个预置档位，插件不会在下次启动时重新生成（尊重你的删除）；想找回，把 `$DSH_HOME/data/dsh-subagent-model/seeded-presets.json` 删掉再重启即可（会重新写入缺失的预置档位）。
+
+**种子自愈（v1.2.1）**：种子模板带版本号。v1.2.0 的模板漏写了 `tool-fs-search` 的必填配置 `sampleOverCapGlobResults`（官方 schema 必填且无默认值），导致预置预设无法挂载；一旦被设为默认预设，新建会话会直接失败。v1.2.1 修复了模板，并在下次启动时把**仍与旧模板逐字节一致**（即你从未编辑过）的种子文件原地升级到新模板；你编辑过的文件永远原样保留，磁盘上已是正确内容的（如手动修复过的）也不会被改动。
 
 预设档位的人格文本取自该预设自身（`agent.cordis.yml` 的 persona 行），所以你在设置里编辑人格后，委派出去的子代理也会用新人格。已知工具面的预设（如 极简模式 → bash + str_replace_editor、轻量执行、只读研究）还会裁剪工具。工具名与实际注册不符时委派不会失败：插件自动降级为仅人格并在结果中提示修正。
 
